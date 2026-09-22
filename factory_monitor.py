@@ -11,6 +11,11 @@ from text_overlay import put_text_ru
 
 TELEGRAM_ENABLED = bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
 
+# На headless-машине (без дисплея, например заводской сервер по SSH) окно
+# показать нельзя — cv2.imshow там упадёт с ошибкой. SHOW_WINDOW=0 отключает
+# окно, оставляя детекцию/алерты/Telegram работать как обычно.
+SHOW_WINDOW = os.environ.get("SHOW_WINDOW", "1") != "0"
+
 # Детект телефона: своя модель, дообученная на FPI-Det + реальных кадрах этой
 # камеры. Работает надёжно, когда телефон физически виден на пикселях
 # (хорошее освещение, не силуэт, не смаз движения) — на силуэтах против
@@ -54,6 +59,8 @@ LOG_PATH = "alerts.log"
 PHONE_PHOTO_DIR = "phone"
 PORTRAIT_PAD_FRAC = 0.08  # небольшой запас, чтобы не обрезать голову/ступни
 
+WINDOW_NAME = "Factory Monitor - Camera 01"
+
 
 def log_alert(message: str):
     line = f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}"
@@ -67,19 +74,7 @@ def clamp_box(box, w, h):
     return max(0, int(x1)), max(0, int(y1)), min(w, int(x2)), min(h, int(y2))
 
 
-def main():
-    os.makedirs(PHONE_PHOTO_DIR, exist_ok=True)
-
-    if TELEGRAM_ENABLED:
-        telegram_bot.RegistrationListener()
-        print("Telegram-бот запущен, слушает /start для регистрации подписчиков.")
-    else:
-        print("TELEGRAM_BOT_TOKEN не задан — уведомления в Telegram отключены.")
-
-    reader = LatestFrameReader()
-    person_model = YOLO(PERSON_MODEL_PATH)
-    phone_model = YOLO(PHONE_MODEL_PATH) if PHONE_DETECTION_ENABLED else None
-
+def run_loop(reader, person_model, phone_model):
     bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=200, varThreshold=40, detectShadows=False)
 
     pallet_count = 0
@@ -90,11 +85,6 @@ def main():
     line_stalled = False
 
     last_phone_alert = 0
-
-    window = "Factory Monitor - Camera 01"
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
-
-    print("Запущено. 'q' — выход.")
 
     while True:
         ret, frame = reader.read()
@@ -216,12 +206,39 @@ def main():
         if violation:
             frame = put_text_ru(frame, "ТЕЛЕФОН В ЦЕХЕ!", (30, 110), 40, (0, 0, 255))
 
-        cv2.imshow(window, frame)
-        if cv2.waitKey(1) & 0xFF == ord("q"):
-            break
+        if SHOW_WINDOW:
+            cv2.imshow(WINDOW_NAME, frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
-    reader.release()
-    cv2.destroyAllWindows()
+
+def main():
+    os.makedirs(PHONE_PHOTO_DIR, exist_ok=True)
+
+    if TELEGRAM_ENABLED:
+        telegram_bot.RegistrationListener()
+        print("Telegram-бот запущен, слушает /start для регистрации подписчиков.")
+    else:
+        print("TELEGRAM_BOT_TOKEN не задан — уведомления в Telegram отключены.")
+
+    reader = LatestFrameReader()
+    person_model = YOLO(PERSON_MODEL_PATH)
+    phone_model = YOLO(PHONE_MODEL_PATH) if PHONE_DETECTION_ENABLED else None
+
+    if SHOW_WINDOW:
+        cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+        print("Запущено. 'q' в окне — выход.")
+    else:
+        print("Запущено без окна (SHOW_WINDOW=0). Ctrl+C — выход.")
+
+    try:
+        run_loop(reader, person_model, phone_model)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        reader.release()
+        if SHOW_WINDOW:
+            cv2.destroyAllWindows()
 
 
 if __name__ == "__main__":
