@@ -5,8 +5,11 @@ from datetime import datetime
 import cv2
 from ultralytics import YOLO
 
+import telegram_bot
 from camera import LatestFrameReader
 from text_overlay import put_text_ru
+
+TELEGRAM_ENABLED = bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
 
 # Детект телефона: своя модель, дообученная на FPI-Det + реальных кадрах этой
 # камеры. Работает надёжно, когда телефон физически виден на пикселях
@@ -66,6 +69,12 @@ def clamp_box(box, w, h):
 
 def main():
     os.makedirs(PHONE_PHOTO_DIR, exist_ok=True)
+
+    if TELEGRAM_ENABLED:
+        telegram_bot.RegistrationListener()
+        print("Telegram-бот запущен, слушает /start для регистрации подписчиков.")
+    else:
+        print("TELEGRAM_BOT_TOKEN не задан — уведомления в Telegram отключены.")
 
     reader = LatestFrameReader()
     person_model = YOLO(PERSON_MODEL_PATH)
@@ -187,10 +196,16 @@ def main():
                     portrait = clean_frame[sy1:sy2, sx1:sx2]
                     if portrait.size == 0:
                         continue
-                    pname = os.path.join(
-                        PHONE_PHOTO_DIR, f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                    )
-                    cv2.imwrite(pname, portrait)
+
+                    stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    portrait_path = os.path.join(PHONE_PHOTO_DIR, f"{stamp}_person.jpg")
+                    full_path = os.path.join(PHONE_PHOTO_DIR, f"{stamp}_full.jpg")
+                    cv2.imwrite(portrait_path, portrait)
+                    cv2.imwrite(full_path, clean_frame)
+
+                    if TELEGRAM_ENABLED:
+                        when_str = datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                        telegram_bot.send_violation_alert(portrait_path, full_path, when_str)
 
         # --- overlay ---
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 255), 2)
