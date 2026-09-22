@@ -1,14 +1,35 @@
+import os
+
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-FONT_PATH = "/System/Library/Fonts/Supplemental/Arial Unicode.ttf"
+# Шрифты с поддержкой кириллицы в типичных местах на разных ОС —
+# ищем первый, что реально есть на этой машине.
+FONT_CANDIDATES = [
+    "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",  # macOS
+    "C:\\Windows\\Fonts\\arial.ttf",  # Windows
+    "C:\\Windows\\Fonts\\segoeui.ttf",  # Windows (запасной)
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux (Debian/Ubuntu)
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # Linux (запасной)
+]
+
 _font_cache = {}
+
+
+def _find_font_path():
+    for path in FONT_CANDIDATES:
+        if os.path.exists(path):
+            return path
+    raise RuntimeError(
+        "Не найден системный шрифт с поддержкой кириллицы. "
+        "Добавьте путь к шрифту в FONT_CANDIDATES в text_overlay.py."
+    )
 
 
 def _get_font(size: int):
     if size not in _font_cache:
-        _font_cache[size] = ImageFont.truetype(FONT_PATH, size)
+        _font_cache[size] = ImageFont.truetype(_find_font_path(), size)
     return _font_cache[size]
 
 
