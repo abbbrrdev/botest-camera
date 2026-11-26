@@ -5,9 +5,9 @@ from datetime import datetime
 import cv2
 from ultralytics import YOLO
 
-import telegram_bot
-from camera import LatestFrameReader
-from text_overlay import put_text_ru
+from app import telegram_bot
+from app.camera import LatestFrameReader
+from app.text_overlay import put_text_ru
 
 TELEGRAM_ENABLED = bool(os.environ.get("TELEGRAM_BOT_TOKEN"))
 
